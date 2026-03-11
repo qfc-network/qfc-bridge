@@ -13,6 +13,7 @@
 
 # production
 /build
+/relayer/dist
 
 # misc
 .DS_Store
