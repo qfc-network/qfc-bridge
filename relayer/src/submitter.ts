@@ -1,16 +1,11 @@
-import { JsonRpcProvider, Wallet, Contract, keccak256, solidityPacked } from "ethers";
+import { JsonRpcProvider, Wallet, Contract } from "ethers";
 import type { ChainConfig } from "./config";
 import { getPendingTxs, updateTxStatus, incrementRetries, type PendingTx } from "./db";
+import { buildRelayProof } from "./prover";
 
 const BRIDGE_LOCK_ABI = [
   "function unlock(address _token, address _recipient, uint256 _amount, uint256 _srcChain, uint256 _nonce, bytes[] calldata _signatures) external",
 ];
-
-const KEY_TO_CHAIN_ID: Record<string, number> = {
-  qfc: 7701,
-  eth: 11155111,
-  bsc: 97,
-};
 
 export class Submitter {
   private wallets: Map<string, Wallet> = new Map();
@@ -50,30 +45,23 @@ export class Submitter {
     try {
       updateTxStatus(tx.id, "submitted");
 
-      const srcChainId = KEY_TO_CHAIN_ID[tx.src_chain];
-
-      // Build simple proof: sign the message hash as relayer
-      const messageHash = keccak256(
-        solidityPacked(
-          ["address", "address", "uint256", "uint256", "uint256"],
-          [tx.token, tx.recipient, tx.amount, srcChainId, tx.nonce]
-        )
-      );
-
-      const signature = await wallet.signMessage(Buffer.from(messageHash.slice(2), "hex"));
+      const proof = buildRelayProof(tx);
+      const signature = await wallet.signMessage(Buffer.from(proof.leafHash.slice(2), "hex"));
 
       const receipt = await (
         await contract.unlock(
           tx.token,
           tx.recipient,
           tx.amount,
-          srcChainId,
+          proof.srcChainId,
           tx.nonce,
           [signature]
         )
       ).wait();
 
-      console.log(`[Submitter] Released on ${tx.dest_chain}: ${receipt.hash}`);
+      console.log(
+        `[Submitter] Released on ${tx.dest_chain}: ${receipt.hash} (root=${proof.merkleRoot}, proofLen=${proof.merkleProof.length})`
+      );
       updateTxStatus(tx.id, "completed", receipt.hash);
     } catch (err) {
       console.error(`[Submitter] Failed to submit tx ${tx.id}:`, err);

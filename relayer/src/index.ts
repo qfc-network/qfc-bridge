@@ -1,6 +1,14 @@
 import http from "http";
 import { loadConfig } from "./config";
-import { initDb, getCompletedToday, getPendingCount, getAvgBridgeTime } from "./db";
+import {
+  initDb,
+  getCompletedToday,
+  getPendingCount,
+  getAvgBridgeTime,
+  getLastRelayAt,
+  getRecentTxs,
+  getTotalVolume,
+} from "./db";
 import { ChainListener } from "./listener";
 import { Submitter } from "./submitter";
 
@@ -12,10 +20,8 @@ async function main() {
   console.log(`   Poll interval: ${config.pollIntervalMs}ms`);
   console.log(`   HTTP port: ${config.port}`);
 
-  // Init database
   await initDb();
 
-  // Init listeners for each chain
   const listeners: ChainListener[] = [];
   for (const chain of config.chains) {
     if (!chain.bridgeAddress) {
@@ -27,23 +33,32 @@ async function main() {
     listeners.push(listener);
   }
 
-  // Init submitter
   const submitter = new Submitter(config.chains, config.relayerPrivateKey);
 
-  // Main poll loop
   const runCycle = async () => {
-    // Poll all chains for new events
-    await Promise.all(listeners.map((l) => l.poll()));
-    // Process pending submissions
+    await Promise.all(listeners.map((listener) => listener.poll()));
     await submitter.processQueue();
   };
 
+  await runCycle();
   setInterval(runCycle, config.pollIntervalMs);
   console.log("🔄 Poll loop started");
 
-  // HTTP status server
-  const server = http.createServer((_req, res) => {
-    const status = {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url || "/", `http://localhost:${config.port}`);
+
+    if (url.pathname === "/health") {
+      return json(res, 200, { status: "ok" });
+    }
+
+    if (url.pathname === "/history") {
+      return json(res, 200, {
+        status: "ok",
+        items: getRecentTxs(50),
+      });
+    }
+
+    return json(res, 200, {
       status: "ok",
       chains: config.chains.map((c) => ({
         key: c.key,
@@ -54,18 +69,22 @@ async function main() {
       pendingCount: getPendingCount(),
       completedToday: getCompletedToday(),
       avgBridgeTimeMs: Math.round(getAvgBridgeTime()),
-    };
-
-    res.writeHead(200, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
+      totalVolume: getTotalVolume(),
+      lastRelayAt: getLastRelayAt(),
     });
-    res.end(JSON.stringify(status, null, 2));
   });
 
   server.listen(config.port, () => {
     console.log(`📡 Status API listening on http://localhost:${config.port}/`);
   });
+}
+
+function json(res: http.ServerResponse, statusCode: number, body: unknown) {
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.end(JSON.stringify(body, null, 2));
 }
 
 main().catch((err) => {
