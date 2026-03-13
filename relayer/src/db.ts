@@ -78,15 +78,26 @@ export function insertPendingTx(tx: Omit<PendingTx, "id" | "status" | "retries" 
   save();
 }
 
-export function getPendingTxs(): PendingTx[] {
-  const results = getDb().exec("SELECT * FROM pending_txs WHERE status IN ('pending', 'submitted') AND retries < 3 ORDER BY created_at ASC");
+function rowsToObjects(results: ReturnType<Database["exec"]>): PendingTx[] {
   if (results.length === 0) return [];
   const cols = results[0].columns;
   return results[0].values.map((row: unknown[]) => {
     const obj: Record<string, unknown> = {};
-    cols.forEach((col: string, i: number) => { obj[col] = row[i]; });
+    cols.forEach((col: string, i: number) => {
+      obj[col] = row[i];
+    });
     return obj as unknown as PendingTx;
   });
+}
+
+export function getPendingTxs(): PendingTx[] {
+  return rowsToObjects(
+    getDb().exec("SELECT * FROM pending_txs WHERE status IN ('pending', 'submitted') AND retries < 3 ORDER BY created_at ASC")
+  );
+}
+
+export function getRecentTxs(limit = 20): PendingTx[] {
+  return rowsToObjects(getDb().exec(`SELECT * FROM pending_txs ORDER BY created_at DESC LIMIT ${limit}`));
 }
 
 export function updateTxStatus(id: number, status: string, targetTxHash?: string): void {
@@ -124,4 +135,20 @@ export function getAvgBridgeTime(): number {
     return results[0].values[0][0] as number;
   }
   return 30000;
+}
+
+export function getTotalVolume(): number {
+  const results = getDb().exec("SELECT SUM(CAST(amount AS REAL)) as total_volume FROM pending_txs WHERE status = 'completed'");
+  if (results.length > 0 && results[0].values[0][0] != null) {
+    return results[0].values[0][0] as number;
+  }
+  return 0;
+}
+
+export function getLastRelayAt(): number | null {
+  const results = getDb().exec("SELECT MAX(updated_at) as last_relay_at FROM pending_txs WHERE status = 'completed'");
+  if (results.length > 0 && results[0].values[0][0] != null) {
+    return results[0].values[0][0] as number;
+  }
+  return null;
 }

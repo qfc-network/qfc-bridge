@@ -1,26 +1,50 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ChainSelector from "@/components/ChainSelector";
 import TokenSelector from "@/components/TokenSelector";
 import BridgeProgress, { type BridgeStep } from "@/components/BridgeProgress";
 import { useWallet } from "@/context/WalletContext";
-import { estimateFee, lockTokens } from "@/lib/bridge";
+import { estimateFee, getTokenBalance, lockTokens } from "@/lib/bridge";
+import { CHAINS, getChainByChainId } from "@/lib/chains";
 import { getToken } from "@/lib/tokens";
 import { formatAmount } from "@/lib/format";
 
 export default function BridgePage() {
-  const { isConnected, address, provider, connect } = useWallet();
+  const { isConnected, address, provider, chainId, connect, switchChain } = useWallet();
   const [sourceChain, setSourceChain] = useState("qfc");
   const [targetChain, setTargetChain] = useState("eth");
   const [tokenSymbol, setTokenSymbol] = useState("QFC");
   const [amount, setAmount] = useState("");
+  const [balance, setBalance] = useState<string | null>(null);
   const [step, setStep] = useState<BridgeStep>("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   const parsedAmount = parseFloat(amount) || 0;
   const fees = useMemo(() => estimateFee(parsedAmount), [parsedAmount]);
   const token = getToken(tokenSymbol);
+  const activeChain = chainId ? getChainByChainId(chainId) : null;
+
+  useEffect(() => {
+    if (!isConnected || !provider || !address || !token) {
+      setBalance(null);
+      return;
+    }
+
+    getTokenBalance(provider, token, sourceChain, address)
+      .then((value) => setBalance(value))
+      .catch(() => setBalance(null));
+  }, [address, isConnected, provider, sourceChain, token]);
+
+  useEffect(() => {
+    if (!isConnected) return;
+    const targetChainId = CHAINS[sourceChain]?.chainId;
+    if (targetChainId && chainId !== targetChainId) {
+      switchChain(targetChainId).catch(() => {
+        // wallet switch rejected or chain missing
+      });
+    }
+  }, [chainId, isConnected, sourceChain, switchChain]);
 
   const handleSwap = () => {
     setSourceChain(targetChain);
@@ -34,7 +58,6 @@ export default function BridgePage() {
     try {
       await lockTokens(provider, token, amount, sourceChain, targetChain, address);
       setStep("confirming");
-      // Simulate relayer confirming
       await new Promise((r) => setTimeout(r, 3000));
       setStep("releasing");
       await new Promise((r) => setTimeout(r, 2000));
@@ -57,7 +80,21 @@ export default function BridgePage() {
       </div>
 
       <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-6">
-        {/* Chain Selectors */}
+        <div className="mb-4 rounded-xl border border-gray-800 bg-gray-800/30 p-4 text-sm text-gray-300">
+          <div className="flex items-center justify-between gap-3">
+            <span>Wallet network</span>
+            <span className="font-medium text-white">
+              {activeChain ? `${activeChain.logo} ${activeChain.name}` : isConnected ? "Unknown network" : "Not connected"}
+            </span>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span>Selected source</span>
+            <span className="font-medium text-cyan-400">
+              {CHAINS[sourceChain]?.logo} {CHAINS[sourceChain]?.name}
+            </span>
+          </div>
+        </div>
+
         <div className="flex items-start gap-3">
           <ChainSelector
             label="From"
@@ -79,12 +116,15 @@ export default function BridgePage() {
           />
         </div>
 
-        {/* Token Selector */}
         <div className="mt-6">
           <TokenSelector value={tokenSymbol} onChange={setTokenSymbol} />
         </div>
 
-        {/* Amount Input */}
+        <div className="mt-3 flex items-center justify-between text-xs uppercase tracking-wider text-gray-500">
+          <span>Available Balance</span>
+          <span className="text-gray-300">{balance ? `${formatAmount(balance)} ${tokenSymbol}` : "—"}</span>
+        </div>
+
         <div className="mt-6">
           <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-gray-500">
             Amount
@@ -98,7 +138,7 @@ export default function BridgePage() {
               className="flex-1 bg-transparent text-lg text-white outline-none placeholder:text-gray-600"
             />
             <button
-              onClick={() => setAmount("1000")}
+              onClick={() => setAmount(balance ? String(Number(balance).toFixed(6)) : "1000")}
               className="rounded-md bg-cyan-500/20 px-2 py-0.5 text-xs font-medium text-cyan-400 transition-colors hover:bg-cyan-500/30"
             >
               Max
@@ -107,7 +147,6 @@ export default function BridgePage() {
           </div>
         </div>
 
-        {/* Fee Breakdown */}
         {parsedAmount > 0 && (
           <div className="mt-4 space-y-2 rounded-xl bg-gray-800/30 p-4 text-sm">
             <div className="flex justify-between text-gray-400">
@@ -131,7 +170,6 @@ export default function BridgePage() {
           </div>
         )}
 
-        {/* Bridge Button */}
         <div className="mt-6">
           {!isConnected ? (
             <button
@@ -155,7 +193,6 @@ export default function BridgePage() {
           )}
         </div>
 
-        {/* Progress Tracker */}
         <BridgeProgress
           step={step}
           sourceChain={sourceChain}

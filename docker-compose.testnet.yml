@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  bridge-ui:
+    image: ghcr.io/qfc-network/qfc-bridge:staging
+    container_name: qfc-bridge-ui
+    restart: unless-stopped
+    ports:
+      - "3290:3290"
+    env_file:
+      - .env.frontend
+    networks:
+      - qfc-testnet
+
+  bridge-relayer:
+    image: ghcr.io/qfc-network/qfc-bridge-relayer:staging
+    container_name: qfc-bridge-relayer
+    restart: unless-stopped
+    ports:
+      - "3295:3295"
+    env_file:
+      - relayer/.env
+    volumes:
+      - bridge-relayer-data:/app
+    networks:
+      - qfc-testnet
+
+networks:
+  qfc-testnet:
+    name: qfc-testnet
+
+volumes:
+  bridge-relayer-data:
