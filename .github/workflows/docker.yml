@@ -12,7 +12,16 @@ env:
 
 jobs:
   build-ui:
-    runs-on: ubuntu-latest
+    name: Build UI (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -27,7 +36,70 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set platform output
+        id: platform
+        run: echo "pair=${platform//\//-}" >> "$GITHUB_OUTPUT"
+        env:
+          platform: ${{ matrix.platform }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.UI_IMAGE }}
+
+      - name: Build and push UI image by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=ui-${{ steps.platform.outputs.pair }}
+          cache-to: type=gha,scope=ui-${{ steps.platform.outputs.pair }},mode=max
+          outputs: type=image,name=${{ env.UI_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export UI digest
+        run: |
+          mkdir -p /tmp/digests-ui
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests-ui/${digest#sha256:}"
+
+      - name: Upload UI digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-ui-${{ steps.platform.outputs.pair }}
+          path: /tmp/digests-ui/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-ui:
+    name: Merge UI manifest
+    runs-on: ubuntu-latest
+    needs: build-ui
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download UI digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests-ui
+          pattern: digests-ui-*
+          merge-multiple: true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract UI metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -35,18 +107,47 @@ jobs:
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
-            type=sha,prefix=
+            type=sha
+            type=sha,prefix=${{ github.ref_name }}-sha-,enable=${{ github.ref_type == 'branch' }}
 
-      - name: Build and push UI image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Merge UI manifest
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+        run: |
+          cd /tmp/digests-ui
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.UI_IMAGE }}@sha256:%s ' *)
+
+      - name: Dispatch bridge UI image tag to qfc-testnet
+        if: github.ref_type == 'branch'
+        continue-on-error: true
+        env:
+          SHORT_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          TAG="${BRANCH}-sha-${SHORT_SHA:0:7}"
+          curl -sf -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.TESTNET_DISPATCH_TOKEN }}" \
+            https://api.github.com/repos/qfc-network/qfc-testnet/dispatches \
+            -d "{\"event_type\":\"image-published\",\"client_payload\":{\"service\":\"bridge\",\"tag\":\"${TAG}\",\"branch\":\"${BRANCH}\",\"sha\":\"${{ github.sha }}\"}}"
+          echo "Dispatched qfc-testnet update for bridge: ${TAG}"
 
   build-relayer:
-    runs-on: ubuntu-latest
+    name: Build Relayer (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -61,7 +162,70 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set platform output
+        id: platform
+        run: echo "pair=${platform//\//-}" >> "$GITHUB_OUTPUT"
+        env:
+          platform: ${{ matrix.platform }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.RELAYER_IMAGE }}
+
+      - name: Build and push relayer image by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./relayer
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=relayer-${{ steps.platform.outputs.pair }}
+          cache-to: type=gha,scope=relayer-${{ steps.platform.outputs.pair }},mode=max
+          outputs: type=image,name=${{ env.RELAYER_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export relayer digest
+        run: |
+          mkdir -p /tmp/digests-relayer
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests-relayer/${digest#sha256:}"
+
+      - name: Upload relayer digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-relayer-${{ steps.platform.outputs.pair }}
+          path: /tmp/digests-relayer/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-relayer:
+    name: Merge relayer manifest
+    runs-on: ubuntu-latest
+    needs: build-relayer
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download relayer digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests-relayer
+          pattern: digests-relayer-*
+          merge-multiple: true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract relayer metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -69,12 +233,32 @@ jobs:
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
-            type=sha,prefix=
+            type=sha
+            type=sha,prefix=${{ github.ref_name }}-sha-,enable=${{ github.ref_type == 'branch' }}
 
-      - name: Build and push Relayer image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./relayer
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Merge relayer manifest
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+        run: |
+          cd /tmp/digests-relayer
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.RELAYER_IMAGE }}@sha256:%s ' *)
+
+      - name: Dispatch bridge relayer image tag to qfc-testnet
+        if: github.ref_type == 'branch'
+        continue-on-error: true
+        env:
+          SHORT_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          TAG="${BRANCH}-sha-${SHORT_SHA:0:7}"
+          curl -sf -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.TESTNET_DISPATCH_TOKEN }}" \
+            https://api.github.com/repos/qfc-network/qfc-testnet/dispatches \
+            -d "{\"event_type\":\"image-published\",\"client_payload\":{\"service\":\"bridge-relayer\",\"tag\":\"${TAG}\",\"branch\":\"${BRANCH}\",\"sha\":\"${{ github.sha }}\"}}"
+          echo "Dispatched qfc-testnet update for bridge-relayer: ${TAG}"
