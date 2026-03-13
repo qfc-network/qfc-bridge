@@ -35,7 +35,8 @@ jobs:
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
-            type=sha,prefix=
+            type=sha
+            type=sha,prefix=${{ github.ref_name }}-sha-,enable=${{ github.ref_type == 'branch' }}
 
       - name: Build and push UI image
         uses: docker/build-push-action@v5
@@ -44,6 +45,21 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Dispatch bridge UI image tag to qfc-testnet
+        if: github.ref_type == 'branch'
+        continue-on-error: true
+        env:
+          SHORT_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          TAG="${BRANCH}-sha-${SHORT_SHA:0:7}"
+          curl -sf -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.TESTNET_DISPATCH_TOKEN }}" \
+            https://api.github.com/repos/qfc-network/qfc-testnet/dispatches \
+            -d "{\"event_type\":\"image-published\",\"client_payload\":{\"service\":\"bridge\",\"tag\":\"${TAG}\",\"branch\":\"${BRANCH}\",\"sha\":\"${{ github.sha }}\"}}"
+          echo "Dispatched qfc-testnet update for bridge: ${TAG}"
 
   build-relayer:
     runs-on: ubuntu-latest
@@ -69,7 +85,8 @@ jobs:
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
-            type=sha,prefix=
+            type=sha
+            type=sha,prefix=${{ github.ref_name }}-sha-,enable=${{ github.ref_type == 'branch' }}
 
       - name: Build and push Relayer image
         uses: docker/build-push-action@v5
@@ -78,3 +95,18 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Dispatch bridge relayer image tag to qfc-testnet
+        if: github.ref_type == 'branch'
+        continue-on-error: true
+        env:
+          SHORT_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          TAG="${BRANCH}-sha-${SHORT_SHA:0:7}"
+          curl -sf -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.TESTNET_DISPATCH_TOKEN }}" \
+            https://api.github.com/repos/qfc-network/qfc-testnet/dispatches \
+            -d "{\"event_type\":\"image-published\",\"client_payload\":{\"service\":\"bridge-relayer\",\"tag\":\"${TAG}\",\"branch\":\"${BRANCH}\",\"sha\":\"${{ github.sha }}\"}}"
+          echo "Dispatched qfc-testnet update for bridge-relayer: ${TAG}"
