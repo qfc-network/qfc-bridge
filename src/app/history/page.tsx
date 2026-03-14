@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useWallet } from "@/context/WalletContext";
-import { getMockHistory, HISTORY_REFRESH_MS } from "@/lib/bridge";
+import { type BridgeTx, getMockHistory, HISTORY_REFRESH_MS } from "@/lib/bridge";
 import { CHAINS } from "@/lib/chains";
 import { formatTimestamp, shortenTxHash, formatAmount } from "@/lib/format";
+
+const RELAYER_STATUS_URL = process.env.NEXT_PUBLIC_RELAYER_STATUS_URL || "http://localhost:3295";
 
 const STATUS_STYLES: Record<string, string> = {
   Pending: "bg-amber-500/20 text-amber-400",
@@ -16,17 +18,47 @@ const STATUS_STYLES: Record<string, string> = {
 export default function HistoryPage() {
   const { isConnected, address } = useWallet();
   const [filterMine, setFilterMine] = useState(false);
-  const [refreshTick, setRefreshTick] = useState(0);
+  const [history, setHistory] = useState<BridgeTx[]>([]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setRefreshTick((tick) => tick + 1), HISTORY_REFRESH_MS);
+    const fetchHistory = () => {
+      fetch(`${RELAYER_STATUS_URL}/history`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (Array.isArray(data.items) && data.items.length > 0) {
+            const mapped: BridgeTx[] = data.items.map((item: Record<string, unknown>) => ({
+              id: String(item.id ?? item.nonce ?? ""),
+              timestamp: Number(item.timestamp ?? item.created_at ?? Date.now()),
+              fromChain: String(item.fromChain ?? item.src_chain ?? ""),
+              toChain: String(item.toChain ?? item.dest_chain ?? ""),
+              token: String(item.token ?? ""),
+              amount: String(item.amount ?? "0"),
+              status: String(item.status ?? "Pending") as BridgeTx["status"],
+              txHash: String(item.txHash ?? item.src_tx_hash ?? ""),
+              sender: String(item.sender ?? ""),
+              recipient: String(item.recipient ?? ""),
+              targetTxHash: item.targetTxHash ? String(item.targetTxHash) : item.dest_tx_hash ? String(item.dest_tx_hash) : undefined,
+            }));
+            setHistory(mapped);
+          }
+        })
+        .catch(() => {
+          setHistory(getMockHistory());
+        });
+    };
+
+    fetchHistory();
+    const id = window.setInterval(fetchHistory, HISTORY_REFRESH_MS);
     return () => window.clearInterval(id);
   }, []);
 
-  const history = useMemo(() => {
-    void refreshTick;
-    return getMockHistory(filterMine ? address : null);
-  }, [address, filterMine, refreshTick]);
+  const filteredHistory = useMemo(() => {
+    if (!filterMine || !address) return history;
+    const addr = address.toLowerCase();
+    return history.filter(
+      (tx) => tx.sender.toLowerCase() === addr || tx.recipient.toLowerCase() === addr
+    );
+  }, [history, filterMine, address]);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -65,14 +97,14 @@ export default function HistoryPage() {
             </tr>
           </thead>
           <tbody>
-            {history.length === 0 ? (
+            {filteredHistory.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center text-gray-500">
                   No bridge transactions found yet.
                 </td>
               </tr>
             ) : (
-              history.map((tx) => (
+              filteredHistory.map((tx) => (
                 <tr key={tx.id} className="border-b border-gray-800/50 transition-colors hover:bg-gray-800/30">
                   <td className="whitespace-nowrap px-4 py-3 text-gray-400">
                     {formatTimestamp(tx.timestamp)}

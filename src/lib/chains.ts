@@ -10,7 +10,7 @@ export interface ChainConfig {
 
 export const CHAINS: Record<string, ChainConfig> = {
   qfc: {
-    chainId: 7701,
+    chainId: 9000,
     name: "QFC Testnet",
     rpcUrl: process.env.NEXT_PUBLIC_QFC_RPC || "https://rpc.testnet.qfc.network",
     bridgeAddress: process.env.NEXT_PUBLIC_BRIDGE_QFC || "",
