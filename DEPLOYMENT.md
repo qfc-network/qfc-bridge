@@ -8,6 +8,18 @@ Deploy `CrossChainBridge.sol` to:
 - ETH Sepolia
 - BSC Testnet
 
+## Testnet Faucets
+
+Get free testnet tokens for deploying and testing the bridge:
+
+| Chain | Faucet | Token |
+|-------|--------|-------|
+| QFC Testnet | https://faucet.testnet.qfc.network | 100 QFC (24h cooldown) |
+| ETH Sepolia | https://cloud.google.com/application/web3/faucet/ethereum/sepolia | 0.05 ETH/day |
+| ETH Sepolia | https://www.alchemy.com/faucets/ethereum-sepolia | 0.1 ETH/day (requires Alchemy account) |
+| ETH Sepolia | https://faucets.chain.link/sepolia | 0.1 ETH (requires Chainlink account) |
+| BSC Testnet | https://www.bnbchain.org/en/testnet-faucet | 0.1 BNB/day |
+
 ## What must happen in `qfc-contracts`
 
 1. Add `sepolia` and `bscTestnet` network configs to `hardhat.config.ts`
