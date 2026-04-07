@@ -2,9 +2,12 @@ import { keccak256, solidityPacked } from "ethers";
 import type { PendingTx } from "./db";
 
 const KEY_TO_CHAIN_ID: Record<string, number> = {
-  qfc: 7701,
+  qfc: 9000,
   eth: 11155111,
   bsc: 97,
+  arb: 421614,
+  polygon: 80002,
+  base: 84532,
 };
 
 export interface RelayProof {

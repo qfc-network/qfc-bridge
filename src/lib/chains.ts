@@ -36,6 +36,33 @@ export const CHAINS: Record<string, ChainConfig> = {
     color: "yellow",
     logo: "🟡",
   },
+  arb: {
+    chainId: 421614,
+    name: "Arbitrum Sepolia",
+    rpcUrl: process.env.NEXT_PUBLIC_ARB_RPC || "https://sepolia-rollup.arbitrum.io/rpc",
+    bridgeAddress: process.env.NEXT_PUBLIC_BRIDGE_ARB || "",
+    explorerUrl: "https://sepolia.arbiscan.io",
+    color: "cyan",
+    logo: "🔷",
+  },
+  polygon: {
+    chainId: 80002,
+    name: "Polygon Amoy",
+    rpcUrl: process.env.NEXT_PUBLIC_POLYGON_RPC || "https://rpc-amoy.polygon.technology",
+    bridgeAddress: process.env.NEXT_PUBLIC_BRIDGE_POLYGON || "",
+    explorerUrl: "https://amoy.polygonscan.com",
+    color: "violet",
+    logo: "🟪",
+  },
+  base: {
+    chainId: 84532,
+    name: "Base Sepolia",
+    rpcUrl: process.env.NEXT_PUBLIC_BASE_RPC || "https://sepolia.base.org",
+    bridgeAddress: process.env.NEXT_PUBLIC_BRIDGE_BASE || "",
+    explorerUrl: "https://sepolia.basescan.org",
+    color: "indigo",
+    logo: "🔹",
+  },
 };
 
 export const CHAIN_LIST = Object.entries(CHAINS).map(([key, config]) => ({

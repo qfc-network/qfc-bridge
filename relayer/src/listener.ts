@@ -7,9 +7,12 @@ const BRIDGE_LOCK_ABI = [
 ];
 
 const CHAIN_ID_TO_KEY: Record<number, string> = {
-  7701: "qfc",
+  9000: "qfc",
   11155111: "eth",
   97: "bsc",
+  421614: "arb",
+  80002: "polygon",
+  84532: "base",
 };
 
 export class ChainListener {
