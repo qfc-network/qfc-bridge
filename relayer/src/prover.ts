@@ -8,6 +8,7 @@ const KEY_TO_CHAIN_ID: Record<string, number> = {
   arb: 421614,
   polygon: 80002,
   base: 84532,
+  op: 11155420,
 };
 
 export interface RelayProof {

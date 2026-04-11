@@ -13,6 +13,7 @@ const CHAIN_ID_TO_KEY: Record<number, string> = {
   421614: "arb",
   80002: "polygon",
   84532: "base",
+  11155420: "op",
 };
 
 export class ChainListener {

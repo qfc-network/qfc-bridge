@@ -50,6 +50,13 @@ export function loadConfig() {
       rpcUrl: process.env.BASE_RPC_URL || "https://sepolia.base.org",
       bridgeAddress: process.env.BRIDGE_ADDRESS_BASE || "",
     },
+    {
+      key: "op",
+      chainId: 11155420,
+      name: "OP Sepolia",
+      rpcUrl: process.env.OP_RPC_URL || "https://sepolia.optimism.io",
+      bridgeAddress: process.env.BRIDGE_ADDRESS_OP || "",
+    },
   ];
 
   return {

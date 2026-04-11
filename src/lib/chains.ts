@@ -63,6 +63,15 @@ export const CHAINS: Record<string, ChainConfig> = {
     color: "indigo",
     logo: "🔹",
   },
+  op: {
+    chainId: 11155420,
+    name: "OP Sepolia",
+    rpcUrl: process.env.NEXT_PUBLIC_OP_RPC || "https://sepolia.optimism.io",
+    bridgeAddress: process.env.NEXT_PUBLIC_BRIDGE_OP || "",
+    explorerUrl: "https://sepolia-optimistic.etherscan.io",
+    color: "red",
+    logo: "🔴",
+  },
 };
 
 export const CHAIN_LIST = Object.entries(CHAINS).map(([key, config]) => ({
